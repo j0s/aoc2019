@@ -5,8 +5,8 @@ import math
 import functools
 import itertools
 
-ParamModePosition = 0
-ParamModeImmediate = 1
+PARAM_MODE_POSITION = 0
+PARAM_MODE_IMMEDIATE = 1
 
 STATE_NOT_STARTED = 0
 STATE_RUNNING = 1
@@ -15,7 +15,7 @@ STATE_TERMINATED = 3
 
 
 def get_param_indices(intcode, modes, ix):
-    return [ix+i if mode == ParamModeImmediate else intcode[ix+i]
+    return [ix+i if mode == PARAM_MODE_IMMEDIATE else intcode[ix+i]
             for i, mode in enumerate(modes, 1)]
 
 
@@ -40,12 +40,17 @@ class ExecutionState:
         self.status = STATE_NOT_STARTED
 
     def __repr__(self):
-        return f'intcode: {self.intcode}, inputs: {self.inputs}, outputs: {self.outputs}, ic: {self.ic}, state: {self.status}'
+        return (f'intcode: {self.intcode}, inputs: {self.inputs}, ' +
+                f'outputs: {self.outputs}, ic: {self.ic}, ' +
+                f'state: {self.status}')
+
 
 logfile = open('output', 'w')
 
+
 def log(msg):
     logfile.write(msg+'\n')
+
 
 def instruction(num_args):
     def decorator_instruction(func):
@@ -53,30 +58,28 @@ def instruction(num_args):
         def execute_instruction(state):
             state.status = STATE_RUNNING
             modes = modes_list(state.intcode[state.ic] / 100)[:num_args]
-            new_ic = func(
-                state, *get_param_indices(state.intcode, modes, state.ic))
+            params = get_param_indices(state.intcode, modes, state.ic)
+            new_ic = func(state, *params)
+            # log(f'{func.__name__}: {params} {state}')
             if state.status != STATE_WAIT_FOR_INPUT:
-                state.ic = (state.ic + num_args +
-                            1) if new_ic is None else new_ic
+                state.ic = ((state.ic + num_args + 1)
+                            if new_ic is None else new_ic)
         return execute_instruction
     return decorator_instruction
 
 
 @instruction(num_args=3)
 def add(state, lhs_ix, rhs_ix, result_ix):
-    log(f'add({lhs_ix}, {rhs_ix}, {result_ix}): {state.intcode[lhs_ix]} + {state.intcode[rhs_ix]}')
     state.intcode[result_ix] = state.intcode[lhs_ix] + state.intcode[rhs_ix]
 
 
 @instruction(num_args=3)
 def multiply(state, lhs_ix, rhs_ix, result_ix):
-    log(f'add({lhs_ix}, {rhs_ix}, {result_ix}): {state.intcode[lhs_ix]} * {state.intcode[rhs_ix]}')
     state.intcode[result_ix] = state.intcode[lhs_ix] * state.intcode[rhs_ix]
 
 
 @instruction(num_args=1)
 def store(state, store_ix):
-    log(f'store({store_ix}): {state.inputs}')
     if len(state.inputs) == 0:
         state.status = STATE_WAIT_FOR_INPUT
     else:
@@ -86,40 +89,34 @@ def store(state, store_ix):
 @instruction(num_args=1)
 def output(state, output_ix):
     state.outputs.append(state.intcode[output_ix])
-    log(f'output({output_ix}): {state.outputs}')
 
 
 @instruction(num_args=2)
 def jump_if_true(state, cond_ix, jump_ix):
-    log(f'jump_if_true({cond_ix}, {jump_ix}): {state.intcode[cond_ix]}')
     if state.intcode[cond_ix]:
         return state.intcode[jump_ix]
 
 
 @instruction(num_args=2)
 def jump_if_false(state, cond_ix, jump_ix):
-    log(f'jump_if_false({cond_ix}, {jump_ix}): {state.intcode[cond_ix]}')
     if not state.intcode[cond_ix]:
         return state.intcode[jump_ix]
 
 
 @instruction(num_args=3)
 def less_than(state, lhs_ix, rhs_ix, result_ix):
-    log(f'less_than({lhs_ix}, {rhs_ix}, {result_ix}): {state.intcode[lhs_ix]} < {state.intcode[rhs_ix]}')
     state.intcode[result_ix] = int(
         state.intcode[lhs_ix] < state.intcode[rhs_ix])
 
 
 @instruction(num_args=3)
 def equals(state, lhs_ix, rhs_ix, result_ix):
-    log(f'equals({lhs_ix}, {rhs_ix}, {result_ix}): {state.intcode[lhs_ix]} == {state.intcode[rhs_ix]}')
     state.intcode[result_ix] = int(
         state.intcode[lhs_ix] == state.intcode[rhs_ix])
 
 
 @instruction(num_args=0)
 def quit(state):
-    log(f'quit')
     state.status = STATE_TERMINATED
 
 
@@ -234,9 +231,10 @@ def chain_executions(intcode, phase_sequence):
     ...                   27,4,27,1001,28,-1,28,1005,28,6,99,0,0,5],
     ...                  [9,8,7,6,5])
     139629729
-    >>> chain_executions([3,52,1001,52,-5,52,3,53,1,52,56,54,1007,54,5,55,1005,55,26,1001,54,
-    ...                   -5,54,1105,1,12,1,53,54,53,1008,54,0,55,1001,55,1,55,2,53,55,53,4,
-    ...                   53,1001,56,-1,56,1005,56,6,99,0,0,0,0,10],
+    >>> chain_executions([3,52,1001,52,-5,52,3,53,1,52,56,54,1007,54,5,55,1005,
+    ...                   55,26,1001,54,-5,54,1105,1,12,1,53,54,53,1008,54,0,
+    ...                   55,1001,55,1,55,2,53,55,53,4,53,1001,56,-1,56,1005,
+    ...                   56,6,99,0,0,0,0,10],
     ...                  [9,7,8,5,6])
     18216
     """
@@ -245,13 +243,11 @@ def chain_executions(intcode, phase_sequence):
               for phase in phase_sequence]
     states[0].inputs.append(0)
     for i in range(len(states)):
-         states[i].outputs = states[(i+1) % len(states)].inputs
+        states[i].outputs = states[(i+1) % len(states)].inputs
     last_output = None
     while len(states) > 0:
         for ix, state in enumerate(states):
-            log(f'{ix}: {state}')
             run_intcode(state)
-            log(f'{ix}: {state}')
             if state.status == STATE_TERMINATED:
                 last_output = state.outputs[0]
         states = [s for s in states if s.status != STATE_TERMINATED]
@@ -263,7 +259,6 @@ if __name__ == '__main__':
         import doctest
         doctest.testmod()
         sys.exit(0)
-    doctest_input = None
 
     with open('input', 'r') as input_data:
         intcode = [int(x) for x in input_data.readline().split(',')]

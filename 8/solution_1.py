@@ -2,6 +2,7 @@
 
 import sys
 
+
 def make_image(sif_input, width, height):
     """
     >>> make_image('123456789012', 3, 2)
@@ -21,6 +22,7 @@ def make_image(sif_input, width, height):
         output.append(layer)
     return output
 
+
 if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--test':
         import doctest
@@ -35,7 +37,7 @@ if __name__ == '__main__':
     min_zeroes = None
     for layer in image:
         layer_zeroes = sum([row.count('0') for row in layer])
-        if min_zeroes == None or layer_zeroes < min_zeroes:
+        if min_zeroes is None or layer_zeroes < min_zeroes:
             min_zeroes = layer_zeroes
             min_zeroes_layer = layer
 

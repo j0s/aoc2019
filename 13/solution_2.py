@@ -15,7 +15,6 @@ STATE_NOT_STARTED = 0
 STATE_RUNNING = 1
 STATE_WAIT_FOR_INPUT = 2
 STATE_TERMINATED = 3
-STATE_OUT_OF_BOUNDS = 4
 
 TILE_BLACK = 0
 TILE_WALL = 1
@@ -23,11 +22,11 @@ TILE_BLOCK = 2
 TILE_PADDLE = 3
 TILE_BALL = 4
 TILE_ASCII_MAP = {
-    TILE_BLACK: '.',
-    TILE_WALL: '+',
-    TILE_BLOCK: '#',
-    TILE_PADDLE: '-',
-    TILE_BALL: 'O'
+    TILE_BLACK: ord('.'),
+    TILE_WALL: ord('+'),
+    TILE_BLOCK: ord('#'),
+    TILE_PADDLE: ord('-'),
+    TILE_BALL: ord('O')
 }
 
 
@@ -89,6 +88,10 @@ class Logger:
         cls.logfile = open(filename, 'w')
 
     @classmethod
+    def initialized(cls):
+        return cls.logfile is not None
+
+    @classmethod
     def log(cls, msg):
         """ Write message to log """
         if cls.logfile is not None:
@@ -96,7 +99,7 @@ class Logger:
 
 
 def instruction(num_args):
-    """ 
+    """
     Decorator for defining an intcode function
     taking num_args parameters
     """
@@ -110,7 +113,8 @@ def instruction(num_args):
                 while len(state.intcode) <= param_ix:
                     state.intcode += [0]
             new_ic = func(state, *params)
-            Logger.log(f'{func.__name__}: {params} {state}')
+            if Logger.initialized():
+                Logger.log(f'{func.__name__}: {params} {state}')
             if state.status != STATE_WAIT_FOR_INPUT:
                 state.ic = ((state.ic + num_args + 1)
                             if new_ic is None else new_ic)
@@ -310,19 +314,28 @@ def run_intcode(state):
         OPCODES[opcode](state)
         if state.status in [STATE_TERMINATED, STATE_WAIT_FOR_INPUT]:
             return state.status
-    return STATE_OUT_OF_BOUNDS
+    raise Exception('Execution continued past end of memory')
+
+
+max_x = None
+max_y = None
 
 
 def draw(painted_coordinates, score):
     """ Output the painted coordinates as ASCII to the terminal """
-    max_x = max([x for x, y in painted_coordinates.keys()])
-    max_y = max([y for x, y in painted_coordinates.keys()])
-    output = [['.']*(max_x+1) for y in range(max_y+1)]
+    sys.stdout.buffer.write(b'score: %d\n' % score)
+    global max_x
+    global max_y
+    max_x = max([x for x, y in painted_coordinates.keys()]) \
+        if max_x is None else max_x
+    max_y = max([y for x, y in painted_coordinates.keys()]) \
+        if max_y is None else max_y
+    output = [bytearray(b'.'*(max_x+1) + b'\n') for y in range(max_y+1)]
     for (x, y), color in painted_coordinates.items():
         output[y][x] = TILE_ASCII_MAP[color]
-    print('score:', score)
     for line in output:
-        print(''.join(line))
+        sys.stdout.buffer.write(line)
+    sys.stdout.flush()
 
 
 def main(argv):
@@ -341,18 +354,29 @@ def main(argv):
     score = 0
     painted_coords = {}
     state = ExecutionState(intcode, [])
-    while run_intcode(state) not in [STATE_TERMINATED, STATE_OUT_OF_BOUNDS]:
+    while state.status != STATE_TERMINATED:
+        run_intcode(state)
         while len(state.outputs) >= 3:
-            x = state.outputs.pop(0)
-            y = state.outputs.pop(0)
+            x, y, param = state.outputs[0:3]
+            del state.outputs[0:3]
             if x == -1 and y == 0:
-                score = state.outputs.pop(0)
-            else:
-                tile = state.outputs.pop(0)
-                painted_coords[coord(x, y)] = tile
+                score = param
+                continue
+            tile = param
+            if tile == TILE_BALL:
+                ball_coords = coord(x, y)
+            elif tile == TILE_PADDLE:
+                paddle_coords = coord(x, y)
+            painted_coords[coord(x, y)] = tile
+        if paddle_coords.x > ball_coords.x:
+            state.inputs.append(-1)
+        elif paddle_coords.x < ball_coords.x:
+            state.inputs.append(1)
+        else:
+            state.inputs.append(0)
         draw(painted_coords, score)
-        input_mapping = {'a': -1, 'o': 0, 'e': 1, '': 0}
-        state.inputs.append(input_mapping[input('')])
+    assert len(state.outputs) == 0
+    print('final score', score)
 
 
 if __name__ == '__main__':

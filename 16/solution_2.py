@@ -25,32 +25,20 @@ class Logger:
             cls.logfile.write(msg+'\n')
 
 
-def gen_pattern(output_ix):
-    while True:
-        for n in [0, 1, 0, -1]:
-            for _ in range(output_ix+1):
-                yield n
-
-
-def gen_offset_pattern(output_ix):
-    fst = True
-    for n in gen_pattern(output_ix):
-        if fst:
-            fst = False
-        else:
-            yield n
-
-
 def apply_pattern(input_value):
     """
     >>> apply_pattern([1, 2, 3, 4, 5, 6, 7, 8])
     [4, 8, 2, 2, 6, 1, 5, 8]
     """
-    output = []
-    for i, _ in enumerate(input_value):
-        s = sum([n*pattern for n, pattern in
-                 zip(input_value, gen_offset_pattern(i))])
-        output.append(abs(s) % 10)
+    # Since we are at the last half, output[i]
+    # is just the sum if input[i:]
+    output = [0]*len(input_value)
+    s = 0
+    i = len(input_value) - 1
+    while i >= 0:
+        s += input_value[i]
+        output[i] = abs(s) % 10
+        i -= 1
     return output
 
 
@@ -68,10 +56,13 @@ def get_message(inp):
     offset = inp[0:7]
     offset.reverse()
     offset = int(sum([n*math.pow(10, i) for i, n in enumerate(offset)]))
-    # Grows with the square of the input number
-    inp = inp * 10
-    apply_pattern_n_times(inp, 1)
-    return inp[offset:offset+8]
+    inp = inp * 10000
+    # Since the offset is more than half of the array, the pattern
+    # is only zeroes up until the digit we are calculating, so we
+    # can safely discard the first offset digits
+    inp = inp[offset:]
+    out = apply_pattern_n_times(inp, 100)
+    return out[:8]
 
 
 def main(argv):
@@ -86,10 +77,8 @@ def main(argv):
         for line in input_data:
             input_value = [int(c) for c in line.strip()]
 
-    print(apply_pattern_n_times(input_value*10, 1))
-    # output = get_message(input_value)
-    # output = [str(o) for o in output]
-    # print(''.join(output))
+    output = get_message(input_value)
+    print(''.join([str(o) for o in output]))
 
 
 if __name__ == '__main__':
